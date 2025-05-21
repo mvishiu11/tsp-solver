@@ -11,10 +11,11 @@ pydantic = "^2.10.6"
 matplotlib = "^3.10.1"
 numpy = "^2.2.3"
 networkx = "^3.4.2"
+ttkbootstrap = "^1.13.8"
 
 [tool.poetry.scripts]
 example = "tsp_solver.main:main"
-gui = "tsp_solver.gui:main"
+gui = "tsp_solver.ui.main:main"
 lint = "scripts.lint:main"
 
 [tool.poetry.group.dev.dependencies]
