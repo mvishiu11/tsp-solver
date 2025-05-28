@@ -1,8 +1,3 @@
-# algorithms/exact.py
-"""
-Exact Held–Karp solver (O(n²·2ⁿ)) with cooperative
-Pause / Stop and a final queue update for the UI.
-"""
 from __future__ import annotations
 
 import math
@@ -39,13 +34,20 @@ class TSPExactAlgorithm(TSPAlgorithm):
         parent = [[-1] * n for _ in range(1 << n)]
         dp[1][0] = 0.0  # start at city 0
 
-        start = time.time()
+        # use perf_counter for high-resolution timing
+        start_time = time.perf_counter()
+        paused_time = 0.0
 
         # iterate over all subsets
         for mask in range(1, 1 << n):
             if cancel_event.is_set():
                 break
-            pause_event.wait()
+
+            # handle pause: exclude paused durations from runtime
+            if not pause_event.is_set():
+                pause_start = time.perf_counter()
+                pause_event.wait()
+                paused_time += time.perf_counter() - pause_start
 
             for i in range(n):
                 if not (mask & (1 << i)):
@@ -77,7 +79,9 @@ class TSPExactAlgorithm(TSPAlgorithm):
             curr = prev
         route.reverse()
 
-        self._push_final(coords, route, best_d, time.time() - start)
+        # compute runtime excluding pause
+        total_time = time.perf_counter() - start_time - paused_time
+        self._push_final(coords, route, best_d, total_time)
         return TSPResult(best_route=route, best_distance=best_d)
 
     # ---------- helpers ----------

@@ -1,4 +1,3 @@
-# algorithms/sa.py
 from __future__ import annotations
 
 import math
@@ -7,7 +6,6 @@ import time
 from typing import List
 
 from tsp_solver.models import TSPProblem, TSPResult
-
 from tsp_solver.algorithms.base import TSPAlgorithm
 from tsp_solver.utils.events import update_queue, cancel_event, pause_event
 
@@ -21,14 +19,18 @@ class TSPSimulatedAnnealing(TSPAlgorithm):
         initial_temp: float = 100.0,
         cooling: float = 0.995,
         random_seed: int | None = None,
+        min_temp: float = 1e-3,
+        max_no_improve: int = 100,
     ) -> None:
         self.max_iterations = max_iterations
         self.initial_temp = initial_temp
         self.cooling = cooling
+        self.min_temp = min_temp
+        self.max_no_improve = max_no_improve
+
         if random_seed is not None:
             random.seed(random_seed)
 
-    # ---------- core ----------
     def solve(self, problem: TSPProblem) -> TSPResult:
         coords = problem.city_coordinates
         n = len(coords)
@@ -48,34 +50,56 @@ class TSPSimulatedAnnealing(TSPAlgorithm):
         best, best_d = current[:], current_d
 
         T = self.initial_temp
-        start = time.time()
+        start = time.perf_counter()
+        no_improve = 0
 
         for it in range(self.max_iterations):
             if cancel_event.is_set():
                 break
             pause_event.wait()
 
+            # propose a 2-opt swap
             i, j = sorted(random.sample(range(n), 2))
-            candidate = current[:i] + current[i: j + 1][::-1] + current[j + 1:]
+            candidate = current[:i] + current[i : j + 1][::-1] + current[j + 1 :]
             cand_d = route_distance(candidate)
             delta = cand_d - current_d
 
+            # accept or reject
             if delta < 0 or random.random() < math.exp(-delta / (T + 1e-9)):
                 current, current_d = candidate, cand_d
                 if current_d < best_d:
                     best, best_d = current[:], current_d
+                    no_improve = 0
+                else:
+                    no_improve += 1
+            else:
+                no_improve += 1
 
+            # cool down
             T *= self.cooling
 
-            update_queue.put(
-                dict(
-                    algo_key="sa",
-                    coords=coords,
-                    route=best,
-                    distance=best_d,
-                    runtime=time.time() - start,
-                    iteration=it,
-                )
-            )
+            # send progress (no runtime yet)
+            update_queue.put({
+                "algo_key": "sa",
+                "coords": coords,
+                "route": best,
+                "distance": best_d,
+                "runtime": time.perf_counter() - start,
+                "iteration": it,
+            })
+
+            # early stop?
+            if T < self.min_temp or no_improve >= self.max_no_improve:
+                break
+
+        total_time = time.perf_counter() - start
+        update_queue.put({
+            "algo_key": "sa",
+            "coords": coords,
+            "route": best,
+            "distance": best_d,
+            "runtime": total_time,
+            "iteration": it,
+        })
 
         return TSPResult(best_route=best, best_distance=best_d)

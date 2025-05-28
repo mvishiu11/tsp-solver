@@ -1,5 +1,5 @@
-# algorithms/ga.py
 from __future__ import annotations
+
 import random
 import time
 
@@ -21,12 +21,15 @@ class TSPGAAlgorithm(TSPAlgorithm):
         generations: int = 400,
         mutation_rate: float = 0.10,
         tournament_k: int = 3,
+        max_no_improve: int = 50,
         random_seed: int | None = None,
     ):
         self.population_size = population_size
         self.generations = generations
         self.mutation_rate = mutation_rate
         self.tournament_k = tournament_k
+        self.max_no_improve = max_no_improve
+
         if random_seed is not None:
             random.seed(random_seed)
             np.random.seed(random_seed)
@@ -40,34 +43,42 @@ class TSPGAAlgorithm(TSPAlgorithm):
 
         best_route: list[int] | None = None
         best_dist = float("inf")
-        start = time.time()
+        no_improve = 0
+        start = time.perf_counter()
 
         for gen in range(self.generations):
             if cancel_event.is_set():
                 break
             pause_event.wait()
 
+            # evaluate fitness
             fitness = [self._route_dist(ind, dist_mtx) for ind in pop]
-            # generation best
+
+            # check for new global best
             gbest_idx = int(np.argmin(fitness))
             gbest_route = pop[gbest_idx]
             gbest_dist = fitness[gbest_idx]
             if gbest_dist < best_dist:
                 best_dist, best_route = gbest_dist, gbest_route
+                no_improve = 0
+            else:
+                no_improve += 1
 
-            # queue update every generation
-            update_queue.put(
-                dict(
-                    algo_key="ga",
-                    coords=coords,
-                    route=best_route,
-                    distance=best_dist,
-                    runtime=time.time() - start,
-                    iteration=gen,
-                )
-            )
+            # send progress update
+            update_queue.put({
+                "algo_key": "ga",
+                "coords": coords,
+                "route": best_route,
+                "distance": best_dist,
+                "runtime": time.perf_counter() - start,
+                "iteration": gen,
+            })
 
-            # next generation
+            # early stop if no improvement for too long
+            if no_improve >= self.max_no_improve:
+                break
+
+            # produce next generation
             new_pop: list[list[int]] = []
             while len(new_pop) < self.population_size:
                 p1 = self._tournament(pop, fitness)

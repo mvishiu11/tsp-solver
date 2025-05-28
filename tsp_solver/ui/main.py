@@ -115,16 +115,15 @@ def _on_run(ctrl: ControlBar, plot: PlotArea) -> None:
 
     # warn if Exact on too many cities
     selection = ctrl.algo_var.get()
-    if selection in ("All", "Exact") and n_cities > 18:
-        if not ttk.messagebox.askyesno(
-            "Exact solver warning",
-            (
-                "The Held–Karp exact solver is exponential and may run for hours "
-                f"with {n_cities} cities.\n\n"
-                "Continue anyway?"
-            ),
-        ):
-            return
+    skip_exact = False
+    if "Exact" in (selection,):
+        if n_cities > 18:
+            skip_exact = True
+        else:
+            skip_exact = False
+
+
+    print(skip_exact)
 
     # create problem instance
     random.seed(42)
@@ -147,7 +146,7 @@ def _on_run(ctrl: ControlBar, plot: PlotArea) -> None:
 
     if selection in ("All", "Genetic Algorithm"):
         spawn("GA", TSPGAAlgorithm)
-    if selection in ("All", "Exact"):
+    if not skip_exact:
         spawn("Exact", TSPExactAlgorithm)
     if selection in ("All", "Simulated Annealing"):
         spawn("SA", TSPSimulatedAnnealing)

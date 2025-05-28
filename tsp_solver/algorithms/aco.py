@@ -14,6 +14,8 @@ from tsp_solver.utils.events import update_queue, cancel_event, pause_event
 class TSPAntColony(TSPAlgorithm):
     """Ant Colony Optimization with default parameters α=1, β=2, evap=0.5."""
 
+    
+
     def __init__(
         self,
         n_ants: int = 20,
@@ -33,6 +35,7 @@ class TSPAntColony(TSPAlgorithm):
             np.random.seed(random_seed)
 
     def solve(self, problem: TSPProblem) -> TSPResult:
+        start_time = time.perf_counter()
         coords = problem.city_coordinates
         n = len(coords)
         D = np.zeros((n, n))
@@ -44,7 +47,7 @@ class TSPAntColony(TSPAlgorithm):
 
         best_route: List[int] | None = None
         best_dist = float("inf")
-        start = time.time()
+        
 
         for it in range(self.n_iter):
             if cancel_event.is_set():
@@ -77,13 +80,14 @@ class TSPAntColony(TSPAlgorithm):
                 for k in range(n):
                     tau[r[k], r[(k + 1) % n]] += 1.0 / d
 
+            elapsed = time.perf_counter() - start_time
             update_queue.put(
                 dict(
                     algo_key="aco",
                     coords=coords,
                     route=best_route,
                     distance=best_dist,
-                    runtime=time.time() - start,
+                    runtime=elapsed,
                     iteration=it,
                 )
             )
