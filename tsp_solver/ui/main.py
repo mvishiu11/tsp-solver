@@ -110,8 +110,6 @@ def _on_run(ctrl: ControlBar, plot: PlotArea) -> None:
     if cancel_event.is_set():
         cancel_event.clear()
 
-    plot.reset_all_titles()
-
     # read parameters
     try:
         n_cities = int(ctrl.city_count.get())
@@ -210,6 +208,10 @@ def _on_run(ctrl: ControlBar, plot: PlotArea) -> None:
                     ),
                 )
             )
+
+        # only reset algorithms that will run, preserving others
+        algo_keys_to_reset = [algo_key for algo_key, _, _ in algorithms_to_run]
+        plot.reset_selected_algorithms(algo_keys_to_reset)
 
         # run each algorithm sequentially
         for algo_key, solver_cls, kwargs in algorithms_to_run:

@@ -147,3 +147,22 @@ class PlotArea(ttk.Frame):
             self._scatter_drawn[key] = False
 
         self.canvas.draw_idle()
+
+    def reset_selected_algorithms(self, algo_keys: list[str]) -> None:
+        """Clear titles & remove route lines only for specified algorithms."""
+        # reset runtime origins for selected algorithms
+        for key in algo_keys:
+            if key in self._start_times:
+                del self._start_times[key]
+
+        for key in algo_keys:
+            if key in self._ax_map:
+                r, c = self._ax_map[key]
+                ax = self.axes[r, c]
+                ax.set_title(_ALGO_TITLES[key])
+                if key in self._lines:
+                    self._lines[key].remove()
+                    del self._lines[key]
+                # Note: don't reset _scatter_drawn[key] since cities should stay
+
+        self.canvas.draw_idle()
