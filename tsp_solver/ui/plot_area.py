@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import matplotlib
+import time
 
 import tkinter as tk
 from typing import Dict, Tuple, List
@@ -44,6 +45,8 @@ class PlotArea(ttk.Frame):
         }
         self._lines: Dict[str, plt.Line2D] = {}
         self._scatter_drawn: Dict[str, bool] = {k: False for k in _ALGO_TITLES}
+        # map algo_key ➜ first-arrival timestamp (perf_counter)
+        self._start_times: Dict[str, float] = {}
 
         for key, (r, c) in self._ax_map.items():
             ax = self.axes[r, c]
@@ -115,9 +118,14 @@ class PlotArea(ttk.Frame):
         title = f"{_ALGO_TITLES[algo_key]}   "
         if isinstance(iteration, int):
             title += f"Iter {iteration}   "
-        title += f"Dist={distance:.2f}"
-        if runtime is not None:
-            title += f"   Time={runtime:.2f}s"
+
+        # establish origin at first update
+        if algo_key not in self._start_times:
+            self._start_times[algo_key] = time.perf_counter()
+
+        elapsed = time.perf_counter() - self._start_times[algo_key]
+
+        title += f"Dist={distance:.2f}   Time={elapsed:.2f}s"
         ax.set_title(title)
 
         self.canvas.draw_idle()
@@ -127,6 +135,9 @@ class PlotArea(ttk.Frame):
     # --------------------------------------------------------------------- #
     def reset_all_titles(self) -> None:
         """Clear titles & remove previous route lines for a fresh run."""
+        # reset runtime origins as well
+        self._start_times.clear()
+
         for key, (r, c) in self._ax_map.items():
             ax = self.axes[r, c]
             ax.set_title(_ALGO_TITLES[key])
@@ -134,4 +145,5 @@ class PlotArea(ttk.Frame):
                 self._lines[key].remove()
                 del self._lines[key]
             self._scatter_drawn[key] = False
+
         self.canvas.draw_idle()

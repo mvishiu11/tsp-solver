@@ -14,8 +14,6 @@ from tsp_solver.utils.events import update_queue, cancel_event, pause_event
 class TSPAntColony(TSPAlgorithm):
     """Ant Colony Optimization with default parameters α=1, β=2, evap=0.5."""
 
-    
-
     def __init__(
         self,
         n_ants: int = 20,
@@ -36,6 +34,7 @@ class TSPAntColony(TSPAlgorithm):
 
     def solve(self, problem: TSPProblem) -> TSPResult:
         start_time = time.perf_counter()
+        paused_time = 0.0  # accumulated pause duration
         coords = problem.city_coordinates
         n = len(coords)
         D = np.zeros((n, n))
@@ -47,12 +46,16 @@ class TSPAntColony(TSPAlgorithm):
 
         best_route: List[int] | None = None
         best_dist = float("inf")
-        
 
         for it in range(self.n_iter):
             if cancel_event.is_set():
                 break
-            pause_event.wait()
+
+            # handle pause – exclude paused duration from runtime
+            if not pause_event.is_set():
+                _pause_start = time.perf_counter()
+                pause_event.wait()  # block until resumed
+                paused_time += time.perf_counter() - _pause_start
 
             routes, dists = [], []
             for _ in range(self.n_ants):
@@ -62,7 +65,9 @@ class TSPAntColony(TSPAlgorithm):
                     i = route[-1]
                     probs = []
                     for j in unvisited:
-                        probs.append((tau[i, j] ** self.alpha) * ((1 / D[i, j]) ** self.beta))
+                        probs.append(
+                            (tau[i, j] ** self.alpha) * ((1 / D[i, j]) ** self.beta)
+                        )
                     probs = np.array(probs)
                     probs /= probs.sum()
                     nxt = random.choices(list(unvisited), probs)[0]
@@ -80,7 +85,7 @@ class TSPAntColony(TSPAlgorithm):
                 for k in range(n):
                     tau[r[k], r[(k + 1) % n]] += 1.0 / d
 
-            elapsed = time.perf_counter() - start_time
+            elapsed = time.perf_counter() - start_time - paused_time
             update_queue.put(
                 dict(
                     algo_key="aco",

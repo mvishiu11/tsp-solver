@@ -45,11 +45,17 @@ class TSPGAAlgorithm(TSPAlgorithm):
         best_dist = float("inf")
         no_improve = 0
         start = time.perf_counter()
+        paused_time = 0.0  # accumulated pause duration
 
         for gen in range(self.generations):
             if cancel_event.is_set():
                 break
-            pause_event.wait()
+
+            # handle pause – exclude paused duration from runtime
+            if not pause_event.is_set():
+                _pause_start = time.perf_counter()
+                pause_event.wait()
+                paused_time += time.perf_counter() - _pause_start
 
             # evaluate fitness
             fitness = [self._route_dist(ind, dist_mtx) for ind in pop]
@@ -65,14 +71,16 @@ class TSPGAAlgorithm(TSPAlgorithm):
                 no_improve += 1
 
             # send progress update
-            update_queue.put({
-                "algo_key": "ga",
-                "coords": coords,
-                "route": best_route,
-                "distance": best_dist,
-                "runtime": time.perf_counter() - start,
-                "iteration": gen,
-            })
+            update_queue.put(
+                {
+                    "algo_key": "ga",
+                    "coords": coords,
+                    "route": best_route,
+                    "distance": best_dist,
+                    "runtime": time.perf_counter() - start - paused_time,
+                    "iteration": gen,
+                }
+            )
 
             # early stop if no improvement for too long
             if no_improve >= self.max_no_improve:
@@ -101,9 +109,7 @@ class TSPGAAlgorithm(TSPAlgorithm):
         m = np.zeros((n, n))
         for i in range(n):
             for j in range(i + 1, n):
-                d = np.hypot(
-                    coords[i][0] - coords[j][0], coords[i][1] - coords[j][1]
-                )
+                d = np.hypot(coords[i][0] - coords[j][0], coords[i][1] - coords[j][1])
                 m[i, j] = m[j, i] = d
         return m
 

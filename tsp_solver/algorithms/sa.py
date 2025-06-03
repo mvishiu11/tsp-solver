@@ -51,12 +51,18 @@ class TSPSimulatedAnnealing(TSPAlgorithm):
 
         T = self.initial_temp
         start = time.perf_counter()
+        paused_time = 0.0  # accumulated pause duration
         no_improve = 0
 
         for it in range(self.max_iterations):
             if cancel_event.is_set():
                 break
-            pause_event.wait()
+
+            # handle pause – exclude paused duration from runtime
+            if not pause_event.is_set():
+                _pause_start = time.perf_counter()
+                pause_event.wait()
+                paused_time += time.perf_counter() - _pause_start
 
             # propose a 2-opt swap
             i, j = sorted(random.sample(range(n), 2))
@@ -79,27 +85,31 @@ class TSPSimulatedAnnealing(TSPAlgorithm):
             T *= self.cooling
 
             # send progress (no runtime yet)
-            update_queue.put({
-                "algo_key": "sa",
-                "coords": coords,
-                "route": best,
-                "distance": best_d,
-                "runtime": time.perf_counter() - start,
-                "iteration": it,
-            })
+            update_queue.put(
+                {
+                    "algo_key": "sa",
+                    "coords": coords,
+                    "route": best,
+                    "distance": best_d,
+                    "runtime": time.perf_counter() - start - paused_time,
+                    "iteration": it,
+                }
+            )
 
             # early stop?
             if T < self.min_temp or no_improve >= self.max_no_improve:
                 break
 
-        total_time = time.perf_counter() - start
-        update_queue.put({
-            "algo_key": "sa",
-            "coords": coords,
-            "route": best,
-            "distance": best_d,
-            "runtime": total_time,
-            "iteration": it,
-        })
+        total_time = time.perf_counter() - start - paused_time
+        update_queue.put(
+            {
+                "algo_key": "sa",
+                "coords": coords,
+                "route": best,
+                "distance": best_d,
+                "runtime": total_time,
+                "iteration": it,
+            }
+        )
 
         return TSPResult(best_route=best, best_distance=best_d)
