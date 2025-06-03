@@ -2,7 +2,7 @@
 """
 Material-styled TSP visualiser.
 • Nothing runs until the user presses Run.
-• If “Exact” is selected with >18 cities the user is warned first.
+• If "Exact" is selected with >18 cities the user is warned first.
 • Queue is purged on startup so no stale messages appear.
 """
 from __future__ import annotations
@@ -29,7 +29,7 @@ from tsp_solver.utils.events import update_queue, cancel_event, pause_event
 from tsp_solver.utils.threading_utils import start_solver_thread
 
 # ------------------------------------------------------------------ #
-_threads: List[threading.Thread] = []        # active workers
+_threads: List[threading.Thread] = []  # active workers
 # ------------------------------------------------------------------ #
 
 
@@ -44,26 +44,35 @@ def main() -> None:
     root = create_root()
     root.protocol("WM_DELETE_WINDOW", lambda: _on_stop(root))
 
-    plot = PlotArea(root)
-    plot.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=10)
+    # -------- layout: plot on left, controls on right -------- #
+    content = ttk.Frame(root)
+    content.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+    # Plot area (left)
+    plot = PlotArea(content)
+    plot.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 5), pady=10)
+
+    # Controls + credits (right)
+    right_pane = ttk.Frame(content)
+    right_pane.pack(side=tk.RIGHT, fill=tk.Y, padx=(5, 10), pady=10)
 
     ctrl = ControlBar(
-        root,
+        right_pane,
         on_run=lambda: _on_run(ctrl, plot),
         on_pause=lambda: _on_pause(ctrl),
         on_resume=lambda: _on_resume(ctrl),
         on_step=lambda: _on_step(ctrl, root),
         on_stop=lambda: _on_stop(root),
     )
-    ctrl.pack(side=tk.TOP, fill=tk.X, padx=10, pady=5)
+    ctrl.pack(side=tk.TOP, fill=tk.Y, padx=0, pady=0)
 
     credits = ttk.Label(
-        root,
+        right_pane,
         text="Created by Jakub Muszyński, Mateusz Nędzi, Patryk Zan",
         font=("Segoe UI", 9, "italic"),
         foreground="#888",
     )
-    credits.pack(side=tk.TOP, pady=(0, 8))
+    credits.pack(side=tk.TOP, pady=(10, 0))
 
     # ---------------- poll one message per tick ---------------- #
     def poll():
@@ -82,7 +91,7 @@ def main() -> None:
             ctrl.stop_btn.configure(state="disabled")
             _threads.clear()
 
-        root.after(50, poll)        # ~20 fps
+        root.after(50, poll)  # ~20 fps
 
     poll()
 
@@ -109,6 +118,24 @@ def _on_run(ctrl: ControlBar, plot: PlotArea) -> None:
         pop_size = int(ctrl.pop_size.get())
         generations = int(ctrl.generations.get())
         mut_rate = float(ctrl.mutation_rate.get())
+
+        # GA extras
+        tournament_k = int(ctrl.tournament_k.get())
+        ga_max_no_improve = int(ctrl.ga_max_no_improve.get())
+
+        # SA parameters
+        sa_max_iterations = int(ctrl.sa_max_iterations.get())
+        sa_initial_temp = float(ctrl.sa_initial_temp.get())
+        sa_cooling = float(ctrl.sa_cooling.get())
+        sa_min_temp = float(ctrl.sa_min_temp.get())
+        sa_max_no_improve = int(ctrl.sa_max_no_improve.get())
+
+        # ACO parameters
+        aco_n_ants = int(ctrl.aco_n_ants.get())
+        aco_n_iter = int(ctrl.aco_n_iter.get())
+        aco_alpha = float(ctrl.aco_alpha.get())
+        aco_beta = float(ctrl.aco_beta.get())
+        aco_evap = float(ctrl.aco_evap.get())
     except ValueError:
         ttk.messagebox.showerror("Invalid input", "Numeric parameters required.")
         return
@@ -122,7 +149,6 @@ def _on_run(ctrl: ControlBar, plot: PlotArea) -> None:
         else:
             skip_exact = False
 
-
     print(skip_exact)
 
     # create problem instance
@@ -130,28 +156,98 @@ def _on_run(ctrl: ControlBar, plot: PlotArea) -> None:
     coords = [(random.random() * 100, random.random() * 100) for _ in range(n_cities)]
     problem = TSPProblem(city_coordinates=coords)
 
-    # helper to spawn each solver
-    def spawn(name: str, solver_cls):
-        thread = start_solver_thread(
-            name,
-            lambda: solver_cls().solve(problem)
-            if name != "GA"
-            else solver_cls(
-                population_size=pop_size,
-                generations=generations,
-                mutation_rate=mut_rate,
-            ).solve(problem),
-        )
-        _threads.append(thread)
+    # sequential runner function
+    def run_algorithms_sequentially():
+        import time
 
-    if selection in ("All", "Genetic Algorithm"):
-        spawn("GA", TSPGAAlgorithm)
-    if not skip_exact:
-        spawn("Exact", TSPExactAlgorithm)
-    if selection in ("All", "Simulated Annealing"):
-        spawn("SA", TSPSimulatedAnnealing)
-    if selection in ("All", "Ant Colony"):
-        spawn("ACO", TSPAntColony)
+        algorithms_to_run = []
+
+        # build list of algorithms to run
+        if selection in ("All", "Genetic Algorithm"):
+            algorithms_to_run.append(
+                (
+                    "ga",
+                    TSPGAAlgorithm,
+                    dict(
+                        population_size=pop_size,
+                        generations=generations,
+                        mutation_rate=mut_rate,
+                        tournament_k=tournament_k,
+                        max_no_improve=ga_max_no_improve,
+                    ),
+                )
+            )
+
+        if not skip_exact and selection in ("All", "Exact"):
+            algorithms_to_run.append(("exact", TSPExactAlgorithm, {}))
+
+        if selection in ("All", "Simulated Annealing"):
+            algorithms_to_run.append(
+                (
+                    "sa",
+                    TSPSimulatedAnnealing,
+                    dict(
+                        max_iterations=sa_max_iterations,
+                        initial_temp=sa_initial_temp,
+                        cooling=sa_cooling,
+                        min_temp=sa_min_temp,
+                        max_no_improve=sa_max_no_improve,
+                    ),
+                )
+            )
+
+        if selection in ("All", "Ant Colony"):
+            algorithms_to_run.append(
+                (
+                    "aco",
+                    TSPAntColony,
+                    dict(
+                        n_ants=aco_n_ants,
+                        n_iter=aco_n_iter,
+                        alpha=aco_alpha,
+                        beta=aco_beta,
+                        evap=aco_evap,
+                    ),
+                )
+            )
+
+        # run each algorithm sequentially
+        for algo_key, solver_cls, kwargs in algorithms_to_run:
+            if cancel_event.is_set():
+                break
+
+            # send start message so UI begins timing
+            update_queue.put(
+                dict(
+                    algo_key=algo_key,
+                    coords=coords,
+                    route=[],
+                    distance=float("inf"),
+                    runtime=None,
+                    iteration="starting",
+                )
+            )
+
+            start_time = time.perf_counter()
+            solver = solver_cls(**kwargs)
+            result = solver.solve(problem)
+            end_time = time.perf_counter()
+
+            # send final result without runtime so UI calculates real elapsed time
+            update_queue.put(
+                dict(
+                    algo_key=algo_key,
+                    coords=coords,
+                    route=result.best_route,
+                    distance=result.best_distance,
+                    runtime=None,  # let UI calculate real elapsed time
+                    iteration="final",
+                )
+            )
+
+    # start sequential execution in background thread
+    thread = start_solver_thread("SequentialRunner", run_algorithms_sequentially)
+    _threads.append(thread)
 
     # button states
     ctrl.run_btn.configure(state="disabled")
@@ -159,7 +255,7 @@ def _on_run(ctrl: ControlBar, plot: PlotArea) -> None:
     ctrl.resume_btn.configure(state="disabled")
     ctrl.step_btn.configure(state="normal")
     ctrl.stop_btn.configure(state="normal")
-    pause_event.set()          # ensure running
+    pause_event.set()  # ensure running
 
 
 def _on_pause(ctrl: ControlBar) -> None:
@@ -180,7 +276,7 @@ def _on_step(ctrl: ControlBar, root) -> None:
     if pause_event.is_set():  # only when paused
         return
     pause_event.set()
-    root.after(60, pause_event.clear)   # let exactly one loop body run
+    root.after(60, pause_event.clear)  # let exactly one loop body run
 
 
 def _on_stop(root) -> None:

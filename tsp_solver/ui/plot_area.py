@@ -33,8 +33,9 @@ class PlotArea(ttk.Frame):
     def __init__(self, master) -> None:
         super().__init__(master)
 
-        self.figure, self.axes = plt.subplots(2, 2, figsize=(12, 8))
-        self.figure.tight_layout(pad=3.0)
+        # slightly smaller figure width and reduced padding so plots sit closer
+        self.figure, self.axes = plt.subplots(2, 2, figsize=(10, 7))
+        self.figure.tight_layout(pad=1.5)
 
         # maps algo_key ➜ (row, col) index & the live Line2D object
         self._ax_map: Dict[str, Tuple[int, int]] = {
@@ -119,10 +120,9 @@ class PlotArea(ttk.Frame):
         if isinstance(iteration, int):
             title += f"Iter {iteration}   "
 
-        # establish origin at first update
+        # always calculate real elapsed time (ignore algorithm's provided runtime)
         if algo_key not in self._start_times:
             self._start_times[algo_key] = time.perf_counter()
-
         elapsed = time.perf_counter() - self._start_times[algo_key]
 
         title += f"Dist={distance:.2f}   Time={elapsed:.2f}s"
